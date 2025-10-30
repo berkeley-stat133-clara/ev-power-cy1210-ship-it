@@ -3,32 +3,100 @@ title: "EV Power - Lab 4 Project Report"
 format: typst
 ---
 
-# Example Solution 1
 
 ## **Part 0: libraries**
 
 ```{r}
-
+library(tidyverse)
+renew_2021 <- read_csv("data/renew-use-2021.csv")
+renew_2022 <- read_csv("data/renew-use-2022.csv")
+renew_2023 <- read_csv("data/renew-use-2023.csv")
 ```
 
 ## **Part 1:** **Defining Research Question**
 
-Chosen Question:
+Chosen Question:How has renewable energy use changed from 2021 to 2023 across states? 
+This question compares renewable energy use across U.S. states over three years.
+It examines which states increased or decreased their use from 2021 to 2023.
+The goal is to understand overall trends in renewable energy adoption nationwide.
 
 ## **Part 2: Data Preparation and Cleaning**
 
 ```{r}
+renew_2021_clean <- renew_2021|>
+    rename_with(~ str_to_lower(.)) |>
+    rename_with(~ str_replace_all(., "[[:space:]|\\.]+", "_")) |>
+    rename_with(~ str_replace_all(., "[^a-z0-9_]", "")) |>
+    mutate(state_abbr = str_to_upper(state),state_abbr = str_trim(state_abbr))|> # str_trim standardizes the state abbreviation column by removing any spaces, tabs, or newlines from the start and end of each state string.
+    select(-state)|>
+    relocate(state_abbr)
+head(renew_2021_clean)
+```
 
+```{r}
+renew_2022_clean <- renew_2022 |>
+    rename_with(~ str_to_lower(.)) |>
+    rename_with(~ str_replace_all(., "[[:space:]|\\.]+", "_")) |>
+    rename_with(~ str_replace_all(., "[^a-z0-9_]", "")) |>
+    pivot_longer(cols = !energy_source,names_to = "state_abbr",values_to = "consumption" ) |>
+    mutate(state_abbr = str_to_upper(state_abbr)) |>
+    relocate(state_abbr)
+head(renew_2022_clean)
+```
+```{r}
+renew_2023_clean <- renew_2023|>
+    rename_with(~ str_to_lower(.)) |>
+    rename_with(~ str_replace_all(., "[[:space:]|\\.]+", "_")) |>
+    rename_with(~ str_replace_all(., "[^a-z0-9_]", "")) |>
+    mutate(state_abbr = str_to_upper(state),state_abbr = str_trim(state_abbr))|> 
+    select(-state)|>
+    relocate(state_abbr)
+head(renew_2023_clean)
 ```
 
 ## **Part 3: Joining / Pivoting Datasets for Analysis**
-
 ```{r}
+renew_joined <- renew_2021_clean |>
+  rename(value_2021 = renewable_use_2021) |>
+  left_join(renew_2022_clean |> rename(value_2022 = consumption) |> 
+              select(state_abbr, energy_source, value_2022),
+            by = c("state_abbr", "energy_source")) |>
+  left_join(renew_2023_clean |> rename(value_2023 = renewable_use_2023) |> 
+              select(state_abbr, energy_source, value_2023),
+            by = c("state_abbr", "energy_source"))
+
+head(renew_joined)
 
 ```
+
+
 
 ## **Part 4: Mapping Visualization**
 
 ```{r}
+library(ggplot2)
+library(maps)
+library(dplyr)
+library(tidyr)
+
+us_map <- map_data("state")
+
+renew_sum <- renew_joined |>
+  mutate(across(starts_with("value_"), ~ as.numeric(gsub("[^0-9\\.]", "", .)))) |>
+  group_by(state_abbr) |>
+  summarise(value_2021 = sum(value_2021, na.rm = TRUE),value_2022 = sum(value_2022, na.rm = TRUE),value_2023 = sum(value_2023, na.rm = TRUE)) |>
+  mutate(region = tolower(state.name[match(state_abbr, state.abb)])) |>
+  pivot_longer(cols = starts_with("value_"),names_to = "year",names_prefix = "value_", values_to = "energy_use")
+renew_map <- left_join(us_map, renew_sum, by = "region")
+ggplot(renew_map, aes(long, lat, group = group, fill = energy_use)) +
+  geom_polygon(color = "white") + # Draws each state as a filled polygon, using longitude/latitude coordinates
+  scale_fill_continuous(low = "yellow", high = "darkblue", name = "Energy Use") +
+  labs(title = "Renewable Energy Use by State (2021–2023)") +
+  theme_minimal()
 
 ```
+
+
+**Analysis:**
+From 2021 to 2023, most states showed a gradual increase in renewable energy use. Western states such as California and Oregon had higher total renewable consumption, while southern states remained lower overall. The map highlights clear regional patterns, showing where renewable adoption has grown most rapidly across the country.
+
